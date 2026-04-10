@@ -11,6 +11,8 @@ import signal
 import time
 from pathlib import Path
 
+NPM = "npm.cmd" if sys.platform == "win32" else "npm"
+
 # Track subprocesses for cleanup
 processes = []
 
@@ -35,25 +37,34 @@ def check_requirements():
 
     # Check Node.js
     try:
-        result = subprocess.run(["node", "--version"], capture_output=True, text=True)
+        result = subprocess.run(["node", "--version"], capture_output=True, text=True, shell=True)
         node_version = result.stdout.strip()
-        checks.append(f"✅ Node.js: {node_version}")
+        if node_version:
+            checks.append(f"✅ Node.js: {node_version}")
+        else:
+            checks.append("❌ Node.js not found - please install Node.js")
     except FileNotFoundError:
         checks.append("❌ Node.js not found - please install Node.js")
 
     # Check npm
     try:
-        result = subprocess.run(["npm", "--version"], capture_output=True, text=True)
+        result = subprocess.run([NPM, "--version"], capture_output=True, text=True, shell=True)
         npm_version = result.stdout.strip()
-        checks.append(f"✅ npm: {npm_version}")
+        if npm_version:
+            checks.append(f"✅ npm: {npm_version}")
+        else:
+            checks.append("❌ npm not found - please install npm")
     except FileNotFoundError:
         checks.append("❌ npm not found - please install npm")
 
     # Check uv (which manages Python for us)
     try:
-        result = subprocess.run(["uv", "--version"], capture_output=True, text=True)
+        result = subprocess.run(["uv", "--version"], capture_output=True, text=True, shell=True)
         uv_version = result.stdout.strip()
-        checks.append(f"✅ uv: {uv_version}")
+        if uv_version:
+            checks.append(f"✅ uv: {uv_version}")
+        else:
+            checks.append("❌ uv not found - please install uv")
     except FileNotFoundError:
         checks.append("❌ uv not found - please install uv")
 
@@ -100,7 +111,7 @@ def start_backend():
     # Check if dependencies are installed
     if not (backend_dir / ".venv").exists() and not (backend_dir / "uv.lock").exists():
         print("  Installing backend dependencies...")
-        subprocess.run(["uv", "sync"], cwd=backend_dir, check=True)
+        subprocess.run(["uv", "sync"], cwd=backend_dir, check=True, shell=True)
 
     # Start the backend
     proc = subprocess.Popen(
@@ -109,13 +120,15 @@ def start_backend():
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
-        bufsize=1
+        bufsize=1,
+        shell=True
     )
     processes.append(proc)
 
     # Wait for backend to start
     print("  Waiting for backend to start...")
     for _ in range(30):  # 30 second timeout
+        time.sleep(1)
         try:
             import httpx
             response = httpx.get("http://localhost:8000/health")
@@ -124,7 +137,7 @@ def start_backend():
                 print("     API docs: http://localhost:8000/docs")
                 return proc
         except:
-            time.sleep(1)
+            pass
 
     print("  ❌ Backend failed to start")
     cleanup()
@@ -138,51 +151,36 @@ def start_frontend():
     # Check if dependencies are installed
     if not (frontend_dir / "node_modules").exists():
         print("  Installing frontend dependencies...")
-        subprocess.run(["npm", "install"], cwd=frontend_dir, check=True)
+        subprocess.run([NPM, "install"], cwd=frontend_dir, check=True, shell=True)
 
     # Start the frontend
     proc = subprocess.Popen(
-        ["npm", "run", "dev"],
+        [NPM, "run", "dev"],
         cwd=frontend_dir,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,  # Combine stderr with stdout
         text=True,
-        bufsize=1
+        bufsize=1,
+        shell=True
     )
     processes.append(proc)
 
     # Wait for frontend to start
     print("  Waiting for frontend to start...")
     import httpx
-    import select
 
-    started = False
     for i in range(30):  # 30 second timeout
-        # Check for any output from the process using non-blocking read
-        if proc.stdout:
-            ready, _, _ = select.select([proc.stdout], [], [], 0)
-            if ready:
-                line = proc.stdout.readline()
-                if line:
-                    print(f"    Frontend: {line.strip()}")
-                    # NextJS dev server prints "Ready" when it's ready
-                    if "ready" in line.lower() or "compiled" in line.lower() or "started server" in line.lower():
-                        started = True
-
-        # Also try to connect
-        if started or i > 5:  # Start checking after 5 seconds or when we see "ready"
-            try:
-                response = httpx.get("http://localhost:3000", timeout=1)
-                print("  ✅ Frontend running at http://localhost:3000")
-                return proc
-            except httpx.ConnectError:
-                pass  # Server not ready yet
-            except:
-                # Any other response means server is up
-                print("  ✅ Frontend running at http://localhost:3000")
-                return proc
-
         time.sleep(1)
+        try:
+            response = httpx.get("http://localhost:3000", timeout=1)
+            print("  ✅ Frontend running at http://localhost:3000")
+            return proc
+        except httpx.ConnectError:
+            pass  # Server not ready yet
+        except:
+            # Any other response means server is up
+            print("  ✅ Frontend running at http://localhost:3000")
+            return proc
 
     print("  ❌ Frontend failed to start")
     cleanup()
@@ -204,7 +202,20 @@ def monitor_processes():
         for proc in processes:
             # Check if process is still running
             if proc.poll() is not None:
-                print(f"\n⚠️  A process has stopped unexpectedly!")
+                print(f"\n⚠️  A process has stopped unexpectedly! (return code: {proc.returncode})")
+                # Print any remaining output
+                try:
+                    remaining = proc.stdout.read()
+                    if remaining:
+                        print(f"Last output:\n{remaining}")
+                except:
+                    pass
+                try:
+                    remaining = proc.stderr.read()
+                    if remaining:
+                        print(f"Last error:\n{remaining}")
+                except:
+                    pass
                 cleanup()
 
             # Read any available output
@@ -219,6 +230,8 @@ def monitor_processes():
 
 def main():
     """Main entry point"""
+    sys.stdout.reconfigure(encoding='utf-8')
+
     print("\n🔧 Alex Financial Advisor - Local Development Setup")
     print("="*50)
 
@@ -231,7 +244,7 @@ def main():
         import httpx
     except ImportError:
         print("\n📦 Installing httpx for health checks...")
-        subprocess.run(["uv", "add", "httpx"], check=True)
+        subprocess.run(["uv", "add", "httpx"], check=True, shell=True)
 
     # Start services
     backend_proc = start_backend()
