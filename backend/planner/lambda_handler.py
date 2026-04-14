@@ -11,6 +11,7 @@ from typing import Dict, Any
 from agents import Agent, Runner, trace
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 from litellm.exceptions import RateLimitError
+from datetime import datetime, timezone
 
 try:
     from dotenv import load_dotenv
@@ -40,6 +41,20 @@ db = Database()
 )
 async def run_orchestrator(job_id: str) -> None:
     """Run the orchestrator agent to coordinate portfolio analysis."""
+    start_time = datetime.now(timezone.utc)
+    job = db.jobs.find_by_id(job_id)
+    if not job:
+        logger.error(f"Planner: Job {job_id} not found.")
+        return
+    user_id = job["clerk_user_id"]
+
+    logger.info(json.dumps({
+        "event": "PLANNER_STARTED",
+        "job_id": job_id,
+        "user_id": user_id,
+        "timestamp": start_time.isoformat(),
+    }))
+
     try:
         # Update job status to running
         db.jobs.update_status(job_id, 'running')

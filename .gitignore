@@ -220,6 +220,7 @@ __marimo__/
 .terraform/
 terraform.tfstate.d/
 *.tfstate
+*.tfstate.*.backup
 *.tfstate.backup
 
 # Lambda deployment packages

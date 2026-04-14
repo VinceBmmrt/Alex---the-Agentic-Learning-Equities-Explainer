@@ -298,6 +298,9 @@ resource "aws_cloudfront_distribution" "main" {
   tags                = local.common_tags
   comment             = "Alex Financial Advisor Frontend"
 
+
+
+
   # S3 origin for frontend
   origin {
     domain_name = aws_s3_bucket_website_configuration.frontend.website_endpoint

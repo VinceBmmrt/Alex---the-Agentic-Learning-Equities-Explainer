@@ -32,9 +32,20 @@ from src.schemas import (
 # Load environment variables
 load_dotenv(override=True)
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Configure structured logging
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
+class StructuredLogger:
+    @staticmethod
+    def log_event(event_type, user_id=None, details=None):
+        log_entry = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "event_type": event_type,
+            "user_id": user_id,
+            "details": details
+        }
+        logger.info(json.dumps(log_entry))
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -156,6 +167,11 @@ async def get_or_create_user(
     """Get user or create if first time"""
 
     try:
+        StructuredLogger.log_event(
+            "ANALYSIS_TRIGGERED",
+            user_id=clerk_user_id,
+            details={"analysis_type": request.analysis_type}
+        )
         # Check if user exists
         user = db.users.find_by_clerk_id(clerk_user_id)
 
