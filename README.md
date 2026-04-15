@@ -352,4 +352,4 @@ Aurora is the dominant cost driver at ~55% of the bill. It is the only service t
 
 ## Acknowledgements
 
-A heartfelt thank you to **Ed Donner** for his precious help, his passion for this field is contagious, and the depth of what he shares is rare.
+A heartfelt thank you to **Ed Donner** for his precious help, his passion for this field is contagious, and the depth of what he shares is rare. 🙏🙏🙏
